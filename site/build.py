@@ -144,7 +144,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visibl
 <body><div class="wrap">
 <header>
   <h1>omni-sklearn-metrics</h1>
-  <p>Every scalar metric in <code>sklearn.metrics</code> as a catalog entry an omnibenchmark plan can run by id: the function, the data type of each argument, fixed settings, direction and range. One module runs them all.</p>
+  <p>Every scalar metric in <code>sklearn.metrics</code> as a catalog entry an omnibenchmark plan can run by id: the function, the data type of each argument, fixed settings, direction and range. One module to run them all.</p>
   <ul class="stats"><li><b>{len(metrics)}</b> metrics</li><li><b>{n_fn}</b> sklearn functions</li><li><b>{len(types)}</b> data types</li>
     <li><b>{len(excluded)}</b> functions excluded, with reasons</li><li>scikit-learn <b>{escape(version)}</b></li></ul>
   <div class="links"><a href="{REPO}">Source on GitHub</a><a href="catalog.json">catalog.json</a><a href="#types">Data types</a><a href="#excluded">Not in the catalog</a></div>
