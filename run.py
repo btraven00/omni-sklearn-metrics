@@ -40,17 +40,43 @@ CATALOG = Path(__file__).resolve().parent / "catalog.yaml"
 ALLOWED = ("sklearn.metrics.",)  # a catalog entry is code: only these modules may be called
 
 
-def read_partition(path):
-    """A TSV of cell_id plus one label column -> (cell ids, labels)."""
+def read_table(path, what, ncols=None):
+    """A TSV whose first column is cell_id -> (other column names, cell ids, rows of the other columns)."""
     with open(path, newline="") as f:
         r = csv.reader(f, delimiter="\t")
-        head = next(r)
-        if len(head) != 2 or head[0] != "cell_id":
-            raise ValueError(f"{path}: partition needs columns cell_id + one label column, got {head}")
+        head = next(r, None)
         rows = list(r)
+    if not head or head[0] != "cell_id" or len(head) < 2 or (ncols and len(head) != ncols + 1):
+        raise ValueError(f"{path}: expected columns cell_id + {what}, got {head}")
     if not rows:
         raise ValueError(f"{path}: no cells")
-    return [x[0] for x in rows], np.array([x[1] for x in rows])
+    return head[1:], [x[0] for x in rows], [x[1:] for x in rows]
+
+
+# Readers: path -> (cell ids, values: 1-D or 2-D array, kwargs the port implies for the call).
+def read_labels(path):
+    _, ids, rows = read_table(path, "one label column", 1)
+    return ids, np.array([x[0] for x in rows]), {}
+
+
+def read_values(path):
+    _, ids, rows = read_table(path, "one numeric column", 1)
+    return ids, np.array([x[0] for x in rows], dtype=float), {}
+
+
+def read_embedding(path):
+    # ponytail: csv + float() is ~20 s at 1M x 50; a binary embedding format if that starts to matter
+    _, ids, rows = read_table(path, "numeric columns")
+    return ids, np.array(rows, dtype=float), {}
+
+
+def read_scores(path):
+    """Class columns sorted by name (sklearn's class order), passed on as labels=."""
+    cols, ids, rows = read_table(path, "one probability column per class")
+    if len(cols) < 3:
+        raise ValueError(f"{path}: scores need >= 3 class columns (binary scores are not supported), got {cols}")
+    order = np.argsort(np.array(cols))
+    return ids, np.array(rows, dtype=float)[:, order], {"labels": [cols[i] for i in order]}
 
 
 def code_partition(labels):
@@ -58,36 +84,47 @@ def code_partition(labels):
     return np.unique(labels, return_inverse=True)[1]
 
 
-# port type -> (reader: path -> (ids, values), encoder applied once after alignment)
-# ponytail: one port type; add labels / scores / matrix when a catalog entry needs them
-CONVERTERS = {"partition": (read_partition, code_partition)}
+# port type -> (reader, encoder applied once after alignment)
+CONVERTERS = {
+    "partition": (read_labels, code_partition),
+    "labels": (read_labels, None),
+    "values": (read_values, None),
+    "embedding": (read_embedding, None),
+    "scores": (read_scores, None),
+}
 
 
 class Inputs:
-    """Each file loaded once, as an array in one cell order shared by every file of the run."""
+    """Each file loaded once, its rows in sorted cell_id order: the same order whatever order
+    the files list their cells in, so order-sensitive metrics (a sampled silhouette) are too."""
 
     def __init__(self):
         self.order, self.first, self.cache = None, None, {}
 
     def get(self, ptype, path):
+        """(aligned values, implied kwargs) of a file read as port type ptype."""
         key = (ptype, path)
         if key not in self.cache:
             read, encode = CONVERTERS[ptype]
-            ids, values = read(path)
+            ids, values, implied = read(path)
             if self.order is None:
-                self.order, self.first = {c: i for i, c in enumerate(ids)}, path
+                self.order, self.first = {c: i for i, c in enumerate(sorted(ids))}, path
             if len(ids) != len(self.order) or len(set(ids)) != len(ids) or any(c not in self.order for c in ids):
                 raise ValueError(f"{path}: cell ids differ from {self.first}'s ({len(ids)} vs {len(self.order)} cells)")
             aligned = np.empty_like(values)
             aligned[[self.order[c] for c in ids]] = values  # joined on cell_id, never on row order
-            self.cache[key] = encode(aligned)
+            self.cache[key] = (encode(aligned) if encode else aligned, implied)
         return self.cache[key]
 
 
 def load_catalog(path=CATALOG):
     raw = path.read_bytes()
-    entries = {m["id"]: m for m in yaml.safe_load(raw)["metrics"]}
-    return entries, hashlib.sha256(raw).hexdigest()
+    doc = yaml.safe_load(raw)
+    ids = [m["id"] for m in doc["metrics"]]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    if dup:
+        raise ValueError(f"{path}: duplicate metric ids {dup}")
+    return {m["id"]: m for m in doc["metrics"]}, hashlib.sha256(raw).hexdigest()
 
 
 def resolve(entry):
@@ -137,10 +174,14 @@ def _work(task):
     _DATA = _DATA or Inputs()
     out = []
     for e, f, chosen, subject in group:
-        args = {p: _DATA.get(e["ports"][p], path) for p, path in chosen.items()}
+        params = inspect.signature(f).parameters
+        args, implied = {}, {}
+        for p, path in chosen.items():
+            args[p], extra = _DATA.get(e["ports"][p], path)
+            implied.update({k: v for k, v in extra.items() if k in params})  # a scores port's labels=
         out.append({
             "metric": e["id"],
-            "value": float(f(**args, **e.get("kwargs", {}))),
+            "value": float(f(**args, **{**implied, **e.get("kwargs", {})})),
             "subject": subject,
             "rep": None,
             "attrs": {
@@ -172,6 +213,8 @@ def run(jobs, sha, workers=1):
             subject = " | ".join(os.path.dirname(chosen[p]) for p in (fanned or ports))
             groups.setdefault(tuple(sorted(chosen.items())), []).append((e, f, chosen, subject))
     tasks = [(sha, g) for g in groups.values()]
+    global _DATA
+    _DATA = None  # a fresh cache per run in this process (pool workers start fresh anyway)
     if workers <= 1 or len(tasks) <= 1:
         results = list(map(_work, tasks))
     else:
@@ -235,6 +278,67 @@ def main(argv=None):
             fh.write(json.dumps(rec) + "\n")
 
 
+def every_entry(d, catalog, rng):
+    """Every catalog entry, run from files, against its sklearn function called on the arrays.
+    Plus: the catalog and its excluded list together cover sklearn.metrics exactly."""
+    import sklearn.metrics as skm
+
+    n, classes = 400, np.array(["B cell", "NK", "T cell", "mono", "pDC"])
+    ids = [f"c{i:04d}" for i in range(n)]  # sort in index order: index order is the canonical order
+    t = rng.integers(0, len(classes), n)
+    p = np.where(rng.random(n) < 0.4, rng.integers(0, len(classes), n), t)
+    vt = rng.gamma(2.0, 1.0, n) + 0.1  # positive: the deviances and log errors need it
+    vp = vt * rng.lognormal(0, 0.3, n)
+    prob = rng.dirichlet(np.ones(len(classes)), n)
+    prob[np.arange(n), t] += 1.0
+    prob /= prob.sum(1, keepdims=True)
+    X = rng.normal(size=(len(classes), 4))[t] + rng.normal(scale=0.8, size=(n, 4))
+
+    def write(name, header, cols):
+        idx = rng.permutation(n)  # every file lists cells in its own order
+        with open(d / name, "w") as f:
+            f.write("\t".join(["cell_id", *header]) + "\n")
+            f.writelines("\t".join([ids[i], *(str(c[i]) for c in cols)]) + "\n" for i in idx)
+        return str(d / name)
+
+    shuffled = rng.permutation(len(classes))  # score columns not in class order: the reader sorts them
+    fixtures = {  # port type -> [(path, array as the call should see it)], first = truth, second = prediction
+        "partition": [(write("lt.tsv", ["label"], [classes[t]]), classes[t]), (write("lp.tsv", ["label"], [classes[p]]), classes[p])],
+        "labels": [(str(d / "lt.tsv"), classes[t]), (str(d / "lp.tsv"), classes[p])],
+        "values": [(write("vt.tsv", ["v"], [vt]), vt), (write("vp.tsv", ["v"], [vp]), vp)],
+        "scores": [(write("s.tsv", list(classes[shuffled]), [prob[:, j] for j in shuffled]), prob)],
+        "embedding": [(write("x.tsv", [f"PC{j + 1}" for j in range(4)], list(X.T)), X)],
+    }
+    for e in catalog.values():
+        used, argv, want = {}, [], {}
+        for port, ptype in e["ports"].items():
+            path, arr = fixtures[ptype][used.setdefault(ptype, 0)]
+            used[ptype] += 1
+            argv += [f"--{port}", path]
+            want[port] = arr
+        main(["--output", f"o={d}/e_{e['id']}.jsonl", "--metric", e["id"], "--workers", "1", *argv])
+        got = json.loads(open(d / f"e_{e['id']}.jsonl").readline())["value"]
+        f = getattr(skm, e["call"].rpartition(".")[2])
+        implied = {"labels": list(classes)} if "scores" in e["ports"].values() and "labels" in inspect.signature(f).parameters else {}
+        expect = float(f(**want, **implied, **e.get("kwargs", {})))
+        assert np.isclose(got, expect, rtol=1e-9, atol=1e-12), (e["id"], got, expect)
+        lo, hi = e["range"]
+        assert (lo is None or got >= lo) and (hi is None or got <= hi), (e["id"], got, e["range"])
+
+    # canonical order: the same cells in two file orders give the same arrays (a sampled
+    # silhouette would otherwise depend on which file a worker happened to read first)
+    other = write("x2.tsv", [f"PC{j + 1}" for j in range(4)], list(X.T))
+    a, b = Inputs().get("embedding", fixtures["embedding"][0][0])[0], Inputs().get("embedding", other)[0]
+    assert np.array_equal(a, b), "cell order depends on file order"
+
+    doc = yaml.safe_load(CATALOG.read_text())
+    have = {fn for fn in skm.__all__ if inspect.isfunction(getattr(skm, fn))}
+    placed = {m["call"].rpartition(".")[2] for m in doc["metrics"]} | set(doc["excluded"])
+    assert have == placed, f"not placed: {sorted(have - placed)}; stale: {sorted(placed - have)}"
+    both = {m["call"].rpartition(".")[2] for m in doc["metrics"]} & set(doc["excluded"])
+    assert not both, f"both an entry and excluded: {sorted(both)}"
+
+
 def selftest():
     import sklearn.metrics as skm
     import tempfile
@@ -260,14 +364,15 @@ def selftest():
         write(d / f"m{m}" / "p.tsv", lab)
 
     catalog, _ = load_catalog()
-    gather = ["--metric", ",".join(catalog), "--bind", "labels_true=truth,labels_pred=m",  # --m: a prefix of --metric
+    part = [k for k, e in catalog.items() if list(e["ports"].values()) == ["partition", "partition"]]
+    gather = ["--metric", ",".join(part), "--bind", "labels_true=truth,labels_pred=m",  # --m: a prefix of --metric
               "--truth", str(d / "t.tsv"), "--m", *(str(d / f"m{m}" / "p.tsv") for m in range(3))]
     # as the api 0.8 runtime calls it: legacy flags too, --output in its = form
     main([f"--output=metrics_jsonl={d}/x.jsonl", "--output_dir", str(d), "--name", "x", "--workers", "3", *gather])
     main(["--output", f"metrics_jsonl={d}/serial.jsonl", "--workers", "1", *gather])
     assert (d / "x.jsonl").read_text() == (d / "serial.jsonl").read_text(), "parallel and serial runs differ"
     recs = [json.loads(l) for l in open(d / "x.jsonl")]
-    assert len(recs) == 3 * len(catalog), len(recs)
+    assert len(recs) == 3 * len(part), len(recs)
     for r in recs:
         e = catalog[r["metric"]]
         m = int(Path(r["subject"]).name[1:])
@@ -280,6 +385,8 @@ def selftest():
     main(["--output", f"m={d}/one.jsonl", "--metric", "ari",  # no fan-in: subject is every input's dir
           "--labels_true", str(d / "t.tsv"), "--labels_pred", str(d / "m0" / "p.tsv")])
     assert json.loads(open(d / "one.jsonl").readline())["subject"] == f"{d} | {d}/m0"
+
+    every_entry(d, catalog, rng)
 
     def fails(fn, msg):
         try:
@@ -303,7 +410,7 @@ def selftest():
     inp = Inputs()
     inp.get("partition", str(d / "t.tsv"))
     fails(lambda: inp.get("partition", str(d / "short.tsv")), "cell ids differ")
-    print(f"selftest ok: {len(recs)} records (3 members x {len(catalog)} metrics) match sklearn")
+    print(f"selftest ok: fan-in {len(recs)} records (3 members x {len(part)} partition metrics), all {len(catalog)} catalog entries match sklearn, sklearn.metrics fully placed")
 
 
 if __name__ == "__main__":

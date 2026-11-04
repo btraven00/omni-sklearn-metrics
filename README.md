@@ -27,12 +27,20 @@ outputs, design 009); `--output_dir`/`--name` are accepted and ignored.
   is read, joined on `cell_id` and int-coded once, so the rest is one sklearn call per pair.
   Combinations run in parallel (`--workers`, default: the CPUs the process may use).
   Subject = the fanned-out file's directory (else every input's directory).
-- Port types: `partition` (TSV: `cell_id` + one label column). Inputs are joined on `cell_id`;
-  differing cell sets are an error, never a silent drop.
+- Catalog: 54 entries over every scalar metric in `sklearn.metrics` (clustering agreement,
+  cluster separation, classification, class probabilities, regression); every other function
+  is under `excluded:` with the reason. The selftest fails if the two lists stop covering
+  `sklearn.metrics` exactly, e.g. after a sklearn upgrade.
+- Port types, all TSVs with a `cell_id` first column (catalog.yaml header has the details):
+  `partition` and `labels` (one label column; int-coded vs kept), `values` (one numeric column),
+  `scores` (one probability column per class, >= 3 classes, header = class names, passed as
+  `labels=`), `embedding` (numeric columns). Inputs are joined on `cell_id` and put in sorted
+  `cell_id` order; differing cell sets are an error, never a silent drop.
 - `call` must start with `sklearn.metrics.` (`ALLOWED` in run.py): the catalog is code.
 - Output: the `--output` path, one jsonl record per metric and combination, with the catalog fields, the catalog's
   sha256 and the sklearn version in `attrs`.
-- Check: `pixi run selftest` (every catalog metric, fanned over 3 members, against sklearn called directly).
+- Check: `pixi run selftest` (every catalog entry from files against sklearn called directly on the
+  arrays; partition metrics fanned over 3 members, parallel vs serial; coverage of `sklearn.metrics`).
 - Env: `envs/sklearn.yml`, exported from pixi.toml by `pixi run export-env`.
 
 The resolver and converters are meant to move into obkit once a second module uses them.

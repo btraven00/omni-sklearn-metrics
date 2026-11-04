@@ -1,16 +1,27 @@
 # Metric catalog: every entry is a complete, runnable metric. run.py resolves it at runtime.
 #
-#   id                stable id; never reused for a different computation
+#   id                stable id; never reused for a different computation. sklearn's scorer name
+#                     where one exists, without the neg_ prefix (direction is higher_is_better)
 #   call              dotted path to the function; must start with an allowed prefix (run.py ALLOWED)
-#   ports             function argument -> port type (run.py CONVERTERS)
+#   ports             function argument -> port type (run.py CONVERTERS):
+#                       partition  cell_id + label column; only co-membership matters (int-coded)
+#                       labels     cell_id + label column; values matter (kept as strings)
+#                       values     cell_id + one numeric column
+#                       scores     cell_id + one probability column per class (header = class
+#                                  names); sorted by class name, and passed as labels= to
+#                                  functions that take it. Multiclass (>= 3 classes) only.
+#                       embedding  cell_id + numeric columns (a matrix, e.g. PC1..PCn)
 #   kwargs            fixed keyword arguments; part of what the id means
 #   higher_is_better  true / false
 #   range             [min, max] the value can take; null for unbounded
 #
-# Changing an entry changes results under the same id: every record carries this file's
-# sha256 (attrs.catalog_sha256), so a dashboard can tell the two apart.
+# excluded: every other function in sklearn.metrics, with the reason. The selftest checks the
+# two lists cover sklearn.metrics exactly, so an upgrade that adds a function fails until it is
+# placed. Changing an entry changes results under the same id: every record carries this
+# file's sha256 (attrs.catalog_sha256).
 version: 1
 metrics:
+  # --- partition vs partition (clustering agreement) ----------------------------------------
   - id: ari
     name: Adjusted Rand index
     call: sklearn.metrics.adjusted_rand_score
@@ -37,6 +48,12 @@ metrics:
     kwargs: {average_method: arithmetic}
     higher_is_better: true
     range: [0, 1]
+  - id: mutual_info
+    name: Mutual information (nats)
+    call: sklearn.metrics.mutual_info_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [0, null]
   - id: homogeneity
     name: Homogeneity
     call: sklearn.metrics.homogeneity_score
@@ -62,3 +79,155 @@ metrics:
     ports: {labels_true: partition, labels_pred: partition}
     higher_is_better: true
     range: [0, 1]
+
+  # --- embedding + partition (cluster separation, no ground truth) ---------------------------
+  # silhouette is O(n^2) in time: exact up to ~1e5 cells; silhouette_10k samples 10000 cells
+  # with a fixed seed (cells in sorted cell_id order, so the sample does not depend on file order)
+  - id: silhouette
+    name: Silhouette (euclidean, exact)
+    call: sklearn.metrics.silhouette_score
+    ports: {X: embedding, labels: partition}
+    kwargs: {metric: euclidean}
+    higher_is_better: true
+    range: [-1, 1]
+  - id: silhouette_10k
+    name: Silhouette (euclidean, 10000-cell sample, seed 0)
+    call: sklearn.metrics.silhouette_score
+    ports: {X: embedding, labels: partition}
+    kwargs: {metric: euclidean, sample_size: 10000, random_state: 0}
+    higher_is_better: true
+    range: [-1, 1]
+  - id: calinski_harabasz
+    name: Calinski-Harabasz index
+    call: sklearn.metrics.calinski_harabasz_score
+    ports: {X: embedding, labels: partition}
+    higher_is_better: true
+    range: [0, null]
+  - id: davies_bouldin
+    name: Davies-Bouldin index
+    call: sklearn.metrics.davies_bouldin_score
+    ports: {X: embedding, labels: partition}
+    higher_is_better: false
+    range: [0, null]
+
+  # --- labels vs labels (classification, e.g. cell-type annotation) --------------------------
+  # Multiclass averages only; the binary variants (average=binary) need a pos_label parameter.
+  - id: accuracy
+    name: Accuracy
+    call: sklearn.metrics.accuracy_score
+    ports: {y_true: labels, y_pred: labels}
+    higher_is_better: true
+    range: [0, 1]
+  - id: balanced_accuracy
+    name: Balanced accuracy
+    call: sklearn.metrics.balanced_accuracy_score
+    ports: {y_true: labels, y_pred: labels}
+    higher_is_better: true
+    range: [0, 1]
+  - id: balanced_accuracy_adjusted
+    name: Balanced accuracy, adjusted for chance
+    call: sklearn.metrics.balanced_accuracy_score
+    ports: {y_true: labels, y_pred: labels}
+    kwargs: {adjusted: true}
+    higher_is_better: true
+    range: [null, 1]
+  - id: cohen_kappa
+    name: Cohen's kappa
+    call: sklearn.metrics.cohen_kappa_score
+    ports: {y1: labels, y2: labels}
+    higher_is_better: true
+    range: [-1, 1]
+  - id: matthews_corrcoef
+    name: Matthews correlation coefficient
+    call: sklearn.metrics.matthews_corrcoef
+    ports: {y_true: labels, y_pred: labels}
+    higher_is_better: true
+    range: [-1, 1]
+  - id: hamming_loss
+    name: Hamming loss
+    call: sklearn.metrics.hamming_loss
+    ports: {y_true: labels, y_pred: labels}
+    higher_is_better: false
+    range: [0, 1]
+  - id: zero_one_loss
+    name: Zero-one loss (fraction misclassified)
+    call: sklearn.metrics.zero_one_loss
+    ports: {y_true: labels, y_pred: labels}
+    higher_is_better: false
+    range: [0, 1]
+  - {id: f1_macro, name: F1 (macro), call: sklearn.metrics.f1_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: f1_micro, name: F1 (micro), call: sklearn.metrics.f1_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: f1_weighted, name: F1 (weighted), call: sklearn.metrics.f1_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_macro, name: Precision (macro), call: sklearn.metrics.precision_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_micro, name: Precision (micro), call: sklearn.metrics.precision_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_weighted, name: Precision (weighted), call: sklearn.metrics.precision_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_macro, name: Recall (macro), call: sklearn.metrics.recall_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_micro, name: Recall (micro), call: sklearn.metrics.recall_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_weighted, name: Recall (weighted), call: sklearn.metrics.recall_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_macro, name: Jaccard (macro), call: sklearn.metrics.jaccard_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_micro, name: Jaccard (micro), call: sklearn.metrics.jaccard_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_weighted, name: Jaccard (weighted), call: sklearn.metrics.jaccard_score, ports: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+
+  # --- labels vs scores (class probabilities) ------------------------------------------------
+  - {id: roc_auc_ovr, name: ROC AUC (one-vs-rest, macro), call: sklearn.metrics.roc_auc_score, ports: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovr_weighted, name: ROC AUC (one-vs-rest, weighted), call: sklearn.metrics.roc_auc_score, ports: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: weighted}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovo, name: ROC AUC (one-vs-one, macro), call: sklearn.metrics.roc_auc_score, ports: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovo_weighted, name: ROC AUC (one-vs-one, weighted), call: sklearn.metrics.roc_auc_score, ports: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: weighted}, higher_is_better: true, range: [0, 1]}
+  - {id: average_precision, name: Average precision (one-vs-rest, macro), call: sklearn.metrics.average_precision_score, ports: {y_true: labels, y_score: scores}, kwargs: {average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: log_loss, name: Log loss (cross-entropy), call: sklearn.metrics.log_loss, ports: {y_true: labels, y_pred: scores}, higher_is_better: false, range: [0, null]}
+  - {id: d2_log_loss, name: D2 log loss (fraction of log loss explained), call: sklearn.metrics.d2_log_loss_score, ports: {y_true: labels, y_pred: scores}, higher_is_better: true, range: [null, 1]}
+  - {id: brier_score, name: Brier score (multiclass, unscaled), call: sklearn.metrics.brier_score_loss, ports: {y_true: labels, y_proba: scores}, higher_is_better: false, range: [0, 2]}
+  - {id: top_k_accuracy, name: Top-2 accuracy, call: sklearn.metrics.top_k_accuracy_score, ports: {y_true: labels, y_score: scores}, kwargs: {k: 2}, higher_is_better: true, range: [0, 1]}
+
+  # --- values vs values (regression, e.g. pseudotime or imputed expression) ------------------
+  - {id: r2, name: R2 (coefficient of determination), call: sklearn.metrics.r2_score, ports: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: explained_variance, name: Explained variance, call: sklearn.metrics.explained_variance_score, ports: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: d2_absolute_error, name: D2 absolute error, call: sklearn.metrics.d2_absolute_error_score, ports: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: max_error, name: Maximum absolute error, call: sklearn.metrics.max_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_absolute_error, name: Mean absolute error, call: sklearn.metrics.mean_absolute_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: median_absolute_error, name: Median absolute error, call: sklearn.metrics.median_absolute_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_squared_error, name: Mean squared error, call: sklearn.metrics.mean_squared_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: root_mean_squared_error, name: Root mean squared error, call: sklearn.metrics.root_mean_squared_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_absolute_percentage_error, name: Mean absolute percentage error (fraction), call: sklearn.metrics.mean_absolute_percentage_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  # these need nonnegative (log error) or positive (deviances) values; sklearn raises otherwise
+  - {id: mean_squared_log_error, name: Mean squared log error, call: sklearn.metrics.mean_squared_log_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: root_mean_squared_log_error, name: Root mean squared log error, call: sklearn.metrics.root_mean_squared_log_error, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_poisson_deviance, name: Mean Poisson deviance, call: sklearn.metrics.mean_poisson_deviance, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_gamma_deviance, name: Mean gamma deviance, call: sklearn.metrics.mean_gamma_deviance, ports: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+
+excluded:
+  auc: takes the points of a curve (x, y), not per-cell inputs
+  check_scoring: scorer utility, not a metric
+  get_scorer: scorer utility, not a metric
+  get_scorer_names: scorer utility, not a metric
+  make_scorer: scorer utility, not a metric
+  class_likelihood_ratios: binary only and returns a pair; needs a pos_label parameter
+  classification_report: a report, not a number; its parts are entries (precision_*, recall_*, f1_*)
+  confusion_matrix: a matrix, not a number
+  multilabel_confusion_matrix: a matrix, not a number
+  pair_confusion_matrix: a matrix, not a number; rand and ari are entries
+  precision_recall_fscore_support: per-class arrays; the averages are entries
+  homogeneity_completeness_v_measure: a triple; each part is an entry
+  consensus_score: compares biclusterings (row and column indicators), not per-cell inputs
+  coverage_error: multilabel ranking; needs a multilabel indicator port
+  dcg_score: multilabel ranking; needs a multilabel indicator port
+  ndcg_score: multilabel ranking; needs a multilabel indicator port
+  label_ranking_average_precision_score: multilabel ranking; needs a multilabel indicator port
+  label_ranking_loss: multilabel ranking; needs a multilabel indicator port
+  det_curve: a curve, not a number
+  precision_recall_curve: a curve, not a number
+  roc_curve: a curve, not a number
+  euclidean_distances: pairwise distances, not a metric
+  nan_euclidean_distances: pairwise distances, not a metric
+  pairwise_distances: pairwise distances, not a metric
+  pairwise_distances_argmin: pairwise distances, not a metric
+  pairwise_distances_argmin_min: pairwise distances, not a metric
+  pairwise_distances_chunked: pairwise distances, not a metric
+  pairwise_kernels: pairwise kernels, not a metric
+  silhouette_samples: one value per cell, not a number
+  fbeta_score: beta has no default; add one entry per beta when wanted
+  hinge_loss: needs decision-function margins, not probabilities; add a port type when wanted
+  mean_pinball_loss: alpha is part of the meaning; at the default 0.5 it is mean_absolute_error / 2
+  d2_pinball_score: alpha is part of the meaning; at the default 0.5 it is d2_absolute_error
+  mean_tweedie_deviance: power is part of the meaning; at the default 0 it is mean_squared_error
+  d2_tweedie_score: power is part of the meaning; at the default 0 it is r2
