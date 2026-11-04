@@ -156,14 +156,41 @@ def gather(d, members, n=60):
     return X, L
 
 
-def test_zip_pairs_each_members_own_files():
+def test_lineage_pairs_each_pipelines_files_in_any_order():
     d = tmpdir()
     X, L = gather(d, 3)
+    recs = run_cli(d / "o.jsonl", "--metric", "silhouette", "--X", *X, "--labels", *reversed(L))
+    assert sorted((r["attrs"]["inputs"]["X"], r["attrs"]["inputs"]["labels"]) for r in recs) == sorted(zip(X, L))
+    assert sorted(r["subject"] for r in recs) == [str(d / f"m{m}") for m in range(3)]
+
+
+def test_lineage_one_embedding_serves_the_clusterings_computed_from_it():
+    d = tmpdir()
+    n = 60
+
+    def embedding(node):
+        return write_tsv(d / node / "x.tsv", ["a", "b"], [RNG.normal(size=n), RNG.normal(size=n)])
+
+    def clusters(node):
+        return write_tsv(d / node / "l.tsv", ["c"], [RNG.integers(0, 3, n)])
+
+    # nodes nest under their input's node (omnibenchmark design 007): two clusterings of pca.a, one of pca.b
+    X = [embedding("pca.a"), embedding("pca.b")]
+    L = [clusters("pca.a/leiden.1"), clusters("pca.a/leiden.2"), clusters("pca.b/leiden.1")]
     recs = run_cli(d / "o.jsonl", "--metric", "silhouette", "--X", *X, "--labels", *L)
-    assert [r["attrs"]["inputs"] for r in recs] == [{"X": x, "labels": l} for x, l in zip(X, L)]
-    assert [r["subject"] for r in recs] == [str(d / f"m{m}") for m in range(3)]
-    fails(lambda: run_cli(d / "o.jsonl", "--metric", "silhouette", "--X", *X, "--labels", *L[:2]),
-          "silhouette: --pairing zip needs equally many files", "'X': 3", "'labels': 2")
+    assert sorted((r["attrs"]["inputs"]["labels"], r["attrs"]["inputs"]["X"]) for r in recs) == \
+        [(L[0], X[0]), (L[1], X[0]), (L[2], X[1])]
+
+    o = d / "o.jsonl"
+    stray = clusters("other/leiden.1")  # computed from no embedding given
+    fails(lambda: run_cli(o, "--metric", "silhouette", "--X", *X, "--labels", *L, stray),
+          f"labels file {stray} is on the lineage of 0 combination(s)")
+    nested = embedding("pca.a/leiden.1")  # a second embedding on leiden.1's lineage: ambiguous
+    fails(lambda: run_cli(o, "--metric", "silhouette", "--X", *X, nested, "--labels", *L),
+          f"labels file {L[0]} is on the lineage of 2 combination(s)")
+    unused = embedding("pca.c")  # an embedding nothing was clustered from
+    fails(lambda: run_cli(o, "--metric", "silhouette", "--X", *X, unused, "--labels", *L),
+          f"X file(s) ['{unused}'] share a lineage with no labels file")
 
 
 def test_product_compares_members_with_each_other_never_with_themselves():
