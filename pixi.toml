@@ -11,3 +11,4 @@ pyyaml = "*"
 
 [tasks]
 selftest = "python run.py --selftest"
+export-env = "pixi workspace export conda-environment envs/sklearn.yml && sed -i 's/^name: default/name: sklearn/' envs/sklearn.yml"
