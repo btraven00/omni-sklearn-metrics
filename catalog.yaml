@@ -185,45 +185,45 @@ metrics:
     args: {y_true: labels, y_pred: labels}
     higher_is_better: false
     range: [0, 1]
-  - {id: f1_macro, name: F1 (macro), call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: f1_micro, name: F1 (micro), call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: f1_weighted, name: F1 (weighted), call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: precision_macro, name: Precision (macro), call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: precision_micro, name: Precision (micro), call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: precision_weighted, name: Precision (weighted), call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: recall_macro, name: Recall (macro), call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: recall_micro, name: Recall (micro), call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: recall_weighted, name: Recall (weighted), call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: jaccard_macro, name: Jaccard (macro), call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: jaccard_micro, name: Jaccard (micro), call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
-  - {id: jaccard_weighted, name: Jaccard (weighted), call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: f1_macro, name: "F1 (macro)", call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: f1_micro, name: "F1 (micro)", call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: f1_weighted, name: "F1 (weighted)", call: sklearn.metrics.f1_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_macro, name: "Precision (macro)", call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_micro, name: "Precision (micro)", call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: precision_weighted, name: "Precision (weighted)", call: sklearn.metrics.precision_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_macro, name: "Recall (macro)", call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_micro, name: "Recall (micro)", call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: recall_weighted, name: "Recall (weighted)", call: sklearn.metrics.recall_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_macro, name: "Jaccard (macro)", call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: macro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_micro, name: "Jaccard (micro)", call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: micro, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
+  - {id: jaccard_weighted, name: "Jaccard (weighted)", call: sklearn.metrics.jaccard_score, args: {y_true: labels, y_pred: labels}, kwargs: {average: weighted, zero_division: 0.0}, higher_is_better: true, range: [0, 1]}
 
   # --- labels vs scores (class probabilities) ------------------------------------------------
-  - {id: roc_auc_ovr, name: ROC AUC (one-vs-rest, macro), call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: macro}, higher_is_better: true, range: [0, 1]}
-  - {id: roc_auc_ovr_weighted, name: ROC AUC (one-vs-rest, weighted), call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: weighted}, higher_is_better: true, range: [0, 1]}
-  - {id: roc_auc_ovo, name: ROC AUC (one-vs-one, macro), call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: macro}, higher_is_better: true, range: [0, 1]}
-  - {id: roc_auc_ovo_weighted, name: ROC AUC (one-vs-one, weighted), call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: weighted}, higher_is_better: true, range: [0, 1]}
-  - {id: average_precision, name: Average precision (one-vs-rest, macro), call: sklearn.metrics.average_precision_score, args: {y_true: labels, y_score: scores}, kwargs: {average: macro}, higher_is_better: true, range: [0, 1]}
-  - {id: log_loss, name: Log loss (cross-entropy), call: sklearn.metrics.log_loss, args: {y_true: labels, y_pred: scores}, higher_is_better: false, range: [0, null]}
-  - {id: d2_log_loss, name: D2 log loss (fraction of log loss explained), call: sklearn.metrics.d2_log_loss_score, args: {y_true: labels, y_pred: scores}, higher_is_better: true, range: [null, 1]}
-  - {id: brier_score, name: Brier score (multiclass, unscaled), call: sklearn.metrics.brier_score_loss, args: {y_true: labels, y_proba: scores}, higher_is_better: false, range: [0, 2]}
-  - {id: top_k_accuracy, name: Top-2 accuracy, call: sklearn.metrics.top_k_accuracy_score, args: {y_true: labels, y_score: scores}, kwargs: {k: 2}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovr, name: "ROC AUC (one-vs-rest, macro)", call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovr_weighted, name: "ROC AUC (one-vs-rest, weighted)", call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovr, average: weighted}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovo, name: "ROC AUC (one-vs-one, macro)", call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: roc_auc_ovo_weighted, name: "ROC AUC (one-vs-one, weighted)", call: sklearn.metrics.roc_auc_score, args: {y_true: labels, y_score: scores}, kwargs: {multi_class: ovo, average: weighted}, higher_is_better: true, range: [0, 1]}
+  - {id: average_precision, name: "Average precision (one-vs-rest, macro)", call: sklearn.metrics.average_precision_score, args: {y_true: labels, y_score: scores}, kwargs: {average: macro}, higher_is_better: true, range: [0, 1]}
+  - {id: log_loss, name: "Log loss (cross-entropy)", call: sklearn.metrics.log_loss, args: {y_true: labels, y_pred: scores}, higher_is_better: false, range: [0, null]}
+  - {id: d2_log_loss, name: "D2 log loss (fraction of log loss explained)", call: sklearn.metrics.d2_log_loss_score, args: {y_true: labels, y_pred: scores}, higher_is_better: true, range: [null, 1]}
+  - {id: brier_score, name: "Brier score (multiclass, unscaled)", call: sklearn.metrics.brier_score_loss, args: {y_true: labels, y_proba: scores}, higher_is_better: false, range: [0, 2]}
+  - {id: top_k_accuracy, name: "Top-2 accuracy", call: sklearn.metrics.top_k_accuracy_score, args: {y_true: labels, y_score: scores}, kwargs: {k: 2}, higher_is_better: true, range: [0, 1]}
 
   # --- values vs values (regression, e.g. pseudotime or imputed expression) ------------------
-  - {id: r2, name: R2 (coefficient of determination), call: sklearn.metrics.r2_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
-  - {id: explained_variance, name: Explained variance, call: sklearn.metrics.explained_variance_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
-  - {id: d2_absolute_error, name: D2 absolute error, call: sklearn.metrics.d2_absolute_error_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
-  - {id: max_error, name: Maximum absolute error, call: sklearn.metrics.max_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
-  - {id: mean_absolute_error, name: Mean absolute error, call: sklearn.metrics.mean_absolute_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
-  - {id: median_absolute_error, name: Median absolute error, call: sklearn.metrics.median_absolute_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
-  - {id: mean_squared_error, name: Mean squared error, call: sklearn.metrics.mean_squared_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
-  - {id: root_mean_squared_error, name: Root mean squared error, call: sklearn.metrics.root_mean_squared_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
-  - {id: mean_absolute_percentage_error, name: Mean absolute percentage error (fraction), call: sklearn.metrics.mean_absolute_percentage_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: r2, name: "R2 (coefficient of determination)", call: sklearn.metrics.r2_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: explained_variance, name: "Explained variance", call: sklearn.metrics.explained_variance_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: d2_absolute_error, name: "D2 absolute error", call: sklearn.metrics.d2_absolute_error_score, args: {y_true: values, y_pred: values}, higher_is_better: true, range: [null, 1]}
+  - {id: max_error, name: "Maximum absolute error", call: sklearn.metrics.max_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_absolute_error, name: "Mean absolute error", call: sklearn.metrics.mean_absolute_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: median_absolute_error, name: "Median absolute error", call: sklearn.metrics.median_absolute_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_squared_error, name: "Mean squared error", call: sklearn.metrics.mean_squared_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: root_mean_squared_error, name: "Root mean squared error", call: sklearn.metrics.root_mean_squared_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
+  - {id: mean_absolute_percentage_error, name: "Mean absolute percentage error (fraction)", call: sklearn.metrics.mean_absolute_percentage_error, args: {y_true: values, y_pred: values}, higher_is_better: false, range: [0, null]}
   # sklearn's domains, checked up front: log errors need values > -1, deviances positive values
-  - {id: mean_squared_log_error, name: Mean squared log error, call: sklearn.metrics.mean_squared_log_error, args: {y_true: values, y_pred: values}, requires: {y_true: [above_minus_one], y_pred: [above_minus_one]}, higher_is_better: false, range: [0, null]}
-  - {id: root_mean_squared_log_error, name: Root mean squared log error, call: sklearn.metrics.root_mean_squared_log_error, args: {y_true: values, y_pred: values}, requires: {y_true: [above_minus_one], y_pred: [above_minus_one]}, higher_is_better: false, range: [0, null]}
-  - {id: mean_poisson_deviance, name: Mean Poisson deviance, call: sklearn.metrics.mean_poisson_deviance, args: {y_true: values, y_pred: values}, requires: {y_true: [nonnegative], y_pred: [positive]}, higher_is_better: false, range: [0, null]}
-  - {id: mean_gamma_deviance, name: Mean gamma deviance, call: sklearn.metrics.mean_gamma_deviance, args: {y_true: values, y_pred: values}, requires: {y_true: [positive], y_pred: [positive]}, higher_is_better: false, range: [0, null]}
+  - {id: mean_squared_log_error, name: "Mean squared log error", call: sklearn.metrics.mean_squared_log_error, args: {y_true: values, y_pred: values}, requires: {y_true: [above_minus_one], y_pred: [above_minus_one]}, higher_is_better: false, range: [0, null]}
+  - {id: root_mean_squared_log_error, name: "Root mean squared log error", call: sklearn.metrics.root_mean_squared_log_error, args: {y_true: values, y_pred: values}, requires: {y_true: [above_minus_one], y_pred: [above_minus_one]}, higher_is_better: false, range: [0, null]}
+  - {id: mean_poisson_deviance, name: "Mean Poisson deviance", call: sklearn.metrics.mean_poisson_deviance, args: {y_true: values, y_pred: values}, requires: {y_true: [nonnegative], y_pred: [positive]}, higher_is_better: false, range: [0, null]}
+  - {id: mean_gamma_deviance, name: "Mean gamma deviance", call: sklearn.metrics.mean_gamma_deviance, args: {y_true: values, y_pred: values}, requires: {y_true: [positive], y_pred: [positive]}, higher_is_better: false, range: [0, null]}
 
 excluded:
   auc: takes the points of a curve (x, y), not per-cell inputs

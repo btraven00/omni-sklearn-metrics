@@ -10,6 +10,7 @@ docs links point at). Standard library and PyYAML only.
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from html import escape
 from pathlib import Path
@@ -55,16 +56,35 @@ def card(e, version):
         rows.append(("Fixed", " ".join(f"<code>{escape(k)}={escape(str(v))}</code>" for k, v in e["kwargs"].items())))
     if e.get("requires"):
         rows.append(("Requires", " ".join(f"<code>{escape(a)}: {escape(', '.join(r))}</code>" for a, r in e["requires"].items())))
-    bind = ",".join(f"{a}=&lt;input id&gt;" for a in e["args"])
     hay = " ".join([e["id"], e["name"], fn, family(e), *e["args"], *e["args"].values()]).lower()
     return f"""<article class="card" data-family="{escape(family(e))}" data-types="{escape(' '.join(sorted(set(e['args'].values()))))}" data-hay="{escape(hay)}">
   <div class="top"><h3>{escape(e["name"])}</h3><span class="badge mono" title="catalog id">{escape(e["id"])}</span></div>
   <a class="call mono" href="{docs}">sklearn.metrics.{escape(fn)}</a>
   <dl>{"".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)}</dl>
-  <details><summary>Use in a plan</summary><pre class="mono">metric: "{escape(e["id"])}"
-bind: "{bind}"</pre></details>
-  <div class="foot"><span class="pill">{escape(family(e))}</span><span class="dir {"up" if up else "down"}" title="{"higher" if up else "lower"} is better">{"↑" if up else "↓"}</span></div>
+  <div class="foot"><span class="pill">{escape(family(e))}</span>
+    <span class="foot-r"><button type="button" class="use" data-use="{escape(e["id"])}">Use in a plan</button>
+    <span class="dir {"up" if up else "down"}" title="{"higher" if up else "lower"} is better">{"↑" if up else "↓"}</span></span></div>
 </article>"""
+
+
+def commit():
+    """The commit the site is built from: what a plan should pin."""
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "main"
+
+
+def plan_entry(e, sha_commit):
+    """The module entry for a plan stage, ready to paste."""
+    bind = ",".join(f"{a}=<input id>" for a in e["args"])
+    return (f'- id: {e["id"]}\n'
+            f'  name: "{e["name"]}"\n'
+            f'  software_environment: sklearn\n'
+            f'  repository: {{url: {REPO}, commit: "{sha_commit}", entrypoint: run}}\n'
+            f'  parameters:\n'
+            f'    - metric: "{e["id"]}"\n'
+            f'      bind: "{bind}"')
 
 
 def page(doc, sha, version):
@@ -78,6 +98,11 @@ def page(doc, sha, version):
         f"<td class='mono'>{escape(str(spec['columns']))}</td><td class='mono'>{escape(', '.join(spec['rules']) or '—')}</td></tr>"
         for t, spec in types.items())
     excl_rows = "".join(f"<tr><td><code>{escape(fn)}</code></td><td>{escape(why)}</td></tr>" for fn, why in sorted(excluded.items()))
+    pin = commit()
+    data = {m["id"]: {"name": m["name"], "family": family(m),
+                      "args": [{"arg": a, "type": t, "about": types[t].get("description", "")} for a, t in m["args"].items()],
+                      "requires": m.get("requires", {}), "entry": plan_entry(m, pin)} for m in metrics}
+    data_json = json.dumps(data).replace("</", "<\\/")
     fam_list = "".join(f"<li><b>{escape(name)}</b> <span class='muted'>({fam_counts[name]})</span> {escape(desc)}</li>" for _, name, desc in FAMILIES)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -139,6 +164,30 @@ th, td {{ text-align:left; padding:8px 12px; border-bottom:1px solid var(--line)
 tr:last-child td {{ border-bottom:0; }}
 th {{ color:var(--muted); font-weight:500; }}
 footer {{ margin-top:40px; font-size:12px; color:var(--muted); }}
+.foot-r {{ display:flex; align-items:center; gap:10px; }}
+.use {{ font:12px var(--sans); border:1px solid var(--line); border-radius:7px; padding:3px 9px; background:var(--card); color:var(--fg); cursor:pointer; }}
+.use:hover {{ border-color:var(--line-hi); background:var(--soft); }}
+dialog#use {{ width:min(640px, calc(100% - 32px)); max-height:min(86vh, 860px); padding:0; border:1px solid var(--line); border-radius:14px;
+  background:var(--card); color:var(--fg); box-shadow:0 24px 60px rgba(0,0,0,.25); }}
+dialog#use::backdrop {{ background:rgba(9,9,11,.5); }}
+.dlg-head {{ display:flex; align-items:center; gap:10px; padding:16px 20px 12px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card); }}
+.dlg-head h2 {{ margin:0; font-size:17px; letter-spacing:-.01em; flex:1; min-width:0; }}
+.close {{ border:0; background:none; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 6px; border-radius:6px; }}
+.close:hover {{ background:var(--soft); color:var(--fg); }}
+.dlg-body {{ padding:14px 20px 20px; font-size:14px; }}
+.dlg-body h3 {{ font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:16px 0 6px; font-weight:600; }}
+.dlg-intro, .dlg-note {{ margin:0; color:var(--muted); font-size:13px; }}
+.dlg-note {{ margin-top:8px; }}
+.bind-list {{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }}
+.bind-list li {{ display:grid; gap:2px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; }}
+.bind-list .h {{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }}
+.bind-list .about {{ font-size:12.5px; color:var(--muted); }}
+.bind-list .req {{ font-size:12px; color:var(--down); }}
+.snip-head {{ display:flex; align-items:center; justify-content:space-between; }}
+.snip-head h3 {{ margin-bottom:6px; }}
+.copy {{ font:12px var(--sans); border:1px solid var(--line); border-radius:7px; padding:3px 10px; background:var(--card); color:var(--fg); cursor:pointer; }}
+.copy:hover {{ border-color:var(--line-hi); }}
+pre.snip {{ margin:0; font-size:12.5px; line-height:1.55; background:var(--soft); border-radius:9px; padding:12px 14px; overflow-x:auto; white-space:pre; }}
 button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible {{ outline:2px solid var(--accent); outline-offset:2px; }}
 </style></head>
 <body><div class="wrap">
@@ -171,6 +220,27 @@ button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visibl
 <p>Every other function in <code>sklearn.metrics</code>, with the reason. The module's tests fail if the catalog and this list stop covering <code>sklearn.metrics</code> exactly.</p>
 <div class="tbl"><table><thead><tr><th>Function</th><th>Why it is not an entry</th></tr></thead><tbody>{excl_rows}</tbody></table></div></section>
 
+<dialog id="use" aria-labelledby="use-title">
+  <div class="dlg-head"><h2 id="use-title"></h2><span class="badge mono" id="use-id"></span>
+    <button type="button" class="close" id="use-close" aria-label="Close">✕</button></div>
+  <div class="dlg-body">
+    <p class="dlg-intro">Add this module to a stage that gathers the runs you want to score. Replace each
+      <code>&lt;input id&gt;</code> in <code>bind</code> with the id of the plan output that feeds that argument.</p>
+    <h3>Arguments</h3>
+    <ul class="bind-list" id="use-args"></ul>
+    <div class="snip-head"><h3>Module entry</h3><button type="button" class="copy" id="use-copy">Copy</button></div>
+    <pre class="mono snip" id="use-entry"></pre>
+    <h3>Environment</h3>
+    <p class="dlg-note">Declare it once per plan, with <a href="{REPO}/blob/main/envs/sklearn.yml">envs/sklearn.yml</a> from this repository:</p>
+    <pre class="mono snip">software_environments:
+  sklearn: {{conda: envs/sklearn.yml}}</pre>
+    <p class="dlg-note">When an argument gets several files from a gather, the module pairs each pipeline's own files by lineage.
+      For replicate-to-replicate agreement, bind both arguments to the same input and add <code>pairing: product</code>.
+      Pinned to commit <code class="mono">{escape(pin)}</code>, the one this page was built from.</p>
+  </div>
+</dialog>
+<script type="application/json" id="metric-data">{data_json}</script>
+
 <footer>Built from <code>catalog.yaml</code> (sha256 <span class="mono">{sha[:12]}</span>). <a href="{REPO}">btraven00/omni-sklearn-metrics</a></footer>
 </div>
 <script>
@@ -196,6 +266,31 @@ document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () =
 }}));
 q.addEventListener("input", apply);
 apply();
+
+// "Use in a plan": one dialog, filled from the metric's data
+const DATA = JSON.parse(document.getElementById("metric-data").textContent), dlg = document.getElementById("use");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({{ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }}[c]));
+document.querySelectorAll(".use").forEach(b => b.addEventListener("click", () => {{
+  const m = DATA[b.dataset.use];
+  document.getElementById("use-title").textContent = m.name;
+  document.getElementById("use-id").textContent = b.dataset.use;
+  document.getElementById("use-args").innerHTML = m.args.map(a => `<li>
+    <span class="h"><code>${{esc(a.arg)}}</code><span class="type">${{esc(a.type)}}</span></span>
+    <span class="about">${{esc(a.about)}}</span>
+    ${{m.requires[a.arg] ? `<span class="req">Requires: ${{esc(m.requires[a.arg].join(", "))}}</span>` : ""}}</li>`).join("");
+  document.getElementById("use-entry").textContent = m.entry;
+  document.getElementById("use-copy").textContent = "Copy";
+  dlg.showModal();
+}}));
+document.getElementById("use-close").addEventListener("click", () => dlg.close());
+dlg.addEventListener("click", e => {{ if (e.target === dlg) dlg.close(); }});
+document.getElementById("use-copy").addEventListener("click", e => {{
+  const text = document.getElementById("use-entry").textContent;
+  navigator.clipboard.writeText(text).then(() => {{ e.target.textContent = "Copied"; }}, () => {{
+    const r = document.createRange(); r.selectNodeContents(document.getElementById("use-entry"));
+    getSelection().removeAllRanges(); getSelection().addRange(r); e.target.textContent = "Press Ctrl+C";
+  }});
+}});
 </script>
 </body></html>
 """
