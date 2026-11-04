@@ -310,7 +310,9 @@ def main(out):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text(page(doc, sha, version))
-    data = {"sha256": sha, "sklearn": version, "types": doc["types"], "excluded": doc["excluded"],
+    module = {"url": REPO, "commit": commit(), "entrypoint": "run", "software_environment": "sklearn",
+              "env_file": "envs/sklearn.yml"}  # what a plan pins; tools such as a plan builder read it
+    data = {"sha256": sha, "sklearn": version, "module": module, "types": doc["types"], "excluded": doc["excluded"],
             "metrics": [{**m, "family": family(m)} for m in doc["metrics"]]}
     (out / "catalog.json").write_text(json.dumps(data, indent=1) + "\n")
     (out / ".nojekyll").write_text("")
