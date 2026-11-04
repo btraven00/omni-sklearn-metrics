@@ -49,7 +49,8 @@ def card(e, version):
     fn = e["call"].rpartition(".")[2]
     docs = f"https://scikit-learn.org/{version}/modules/generated/sklearn.metrics.{fn}.html"
     up = e["higher_is_better"]
-    args = "".join(f'<li><code>{escape(a)}</code><span class="type">{escape(t)}</span></li>' for a, t in e["args"].items())
+    args = "".join(f'<li><code>{escape(a)}</code><button type="button" class="type" data-type="{escape(t)}" '
+                   f'title="Show the metrics that read {escape(t)}">{escape(t)}</button></li>' for a, t in e["args"].items())
     rows = [("Reads", f'<ul class="args">{args}</ul>'),
             ("Range", f'{escape(fmt_range(e["range"]))} · {"higher" if up else "lower"} is better')]
     if e.get("kwargs"):
@@ -147,7 +148,9 @@ dl {{ display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 12p
 dt {{ color:var(--muted); }} dd {{ margin:0; min-width:0; overflow-wrap:anywhere; }}
 .args {{ list-style:none; margin:0; padding:0; display:grid; gap:2px; }}
 .args li {{ display:flex; gap:6px; align-items:baseline; flex-wrap:wrap; }}
-.type {{ font-size:11px; border-radius:999px; padding:0 7px; border:1px solid var(--line-hi); color:var(--muted); }}
+.type {{ font:11px var(--sans); border-radius:999px; padding:0 7px; border:1px solid var(--line-hi); color:var(--muted); background:none; }}
+button.type {{ cursor:pointer; }}
+button.type:hover, button.type[aria-pressed="true"] {{ border-color:var(--fg); color:var(--fg); }}
 details summary {{ font-size:12px; color:var(--muted); cursor:pointer; }}
 details pre {{ margin:6px 0 0; font-size:12px; background:var(--soft); border-radius:8px; padding:8px 10px; overflow-x:auto; }}
 .foot {{ margin-top:auto; padding-top:6px; display:flex; justify-content:space-between; align-items:center; }}
@@ -259,12 +262,16 @@ function apply() {{
   document.getElementById("count").textContent = `${{shown}} of ${{cards.length}}`;
   document.getElementById("empty").style.display = shown ? "none" : "block";
 }}
-document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => {{
-  const f = b.dataset.filter, on = active[f] !== b.dataset.value;
-  active[f] = on ? b.dataset.value : null;
-  document.querySelectorAll(`.chip[data-filter="${{f}}"]`).forEach(x => x.setAttribute("aria-pressed", String(on && x === b)));
+// A filter value toggles: choosing the active one again clears it. The data types on the cards
+// set the same filter as the "Reads" chips.
+function toggle(f, value) {{
+  active[f] = active[f] === value ? null : value;
+  document.querySelectorAll(`.chip[data-filter="${{f}}"]`).forEach(x => x.setAttribute("aria-pressed", String(x.dataset.value === active[f])));
+  if (f === "types") document.querySelectorAll(".card .type").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.type === active.types)));
   apply();
-}}));
+}}
+document.querySelectorAll(".chip").forEach(b => b.addEventListener("click", () => toggle(b.dataset.filter, b.dataset.value)));
+document.querySelectorAll(".card .type").forEach(b => b.addEventListener("click", () => toggle("types", b.dataset.type)));
 q.addEventListener("input", apply);
 apply();
 
