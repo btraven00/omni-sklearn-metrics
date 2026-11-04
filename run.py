@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Run catalog metrics by id: catalog.yaml is the implementation, this file only resolves it.
 
-  run.py --output_dir D --name N --metric ari,nmi --bind labels_true=ref_tsv,labels_pred=clusters_tsv \
-         --ref_tsv a.tsv --clusters_tsv b.tsv [c.tsv ...]
+  run.py --output metrics_jsonl=/abs/out.jsonl --metric ari,nmi \
+         --bind labels_true=ref_tsv,labels_pred=clusters_tsv --ref_tsv a.tsv --clusters_tsv b.tsv [c.tsv ...]
   run.py --selftest
+
+Omnibenchmark api >= 0.8 only (named outputs, design 009 §3.2): the one declared output arrives
+as --output <id>=<absolute path> and is written there. --output_dir and --name, which the
+runtime still passes until api 0.10, are accepted and ignored.
 
 Inputs arrive as --<input id> <path> [<path> ...] (omnibenchmark passes them by the plan's input
 ids; a gather passes one path per member). --bind maps each catalog port to one of them; a port
 with no binding uses the input of the same name.
 
 Fan-in: a port bound to several paths runs the metric once per path (once per combination, if
-several ports fan out). Every file is read, joined on cell_id and coded once, into one cell
-order shared by all files, so a pair costs only the sklearn call.
+several ports fan out), in parallel over --workers processes. Each file is read, joined on
+cell_id and coded once per worker, so a pair costs only the sklearn call.
 
-Writes {name}_metrics.jsonl, one record per metric and combination (sc-brrr specs/README.md);
-subject is --name, or with fan-in the directory of each fanned-out file.
+Writes one jsonl record per metric and combination (sc-brrr specs/README.md). subject is the
+directory of each fanned-out input, or of every input when nothing fans out.
 Every id, call, port and binding is checked before any data is read.
 """
 
@@ -121,31 +125,61 @@ def plan(metric_ids, bind, inputs, catalog):
     return jobs
 
 
-def run(jobs, name, sha):
+_DATA = None  # per process: the reference (and anything shared) is read once per worker
+
+
+def _work(task):
+    """All metrics of one input combination, in one process. Returns their records."""
+    global _DATA
     import sklearn
 
-    data = Inputs()
+    sha, group = task
+    _DATA = _DATA or Inputs()
+    out = []
+    for e, f, chosen, subject in group:
+        args = {p: _DATA.get(e["ports"][p], path) for p, path in chosen.items()}
+        out.append({
+            "metric": e["id"],
+            "value": float(f(**args, **e.get("kwargs", {}))),
+            "subject": subject,
+            "rep": None,
+            "attrs": {
+                "call": e["call"],
+                "kwargs": e.get("kwargs", {}),
+                "inputs": chosen,
+                "higher_is_better": e["higher_is_better"],
+                "range": e["range"],
+                "catalog_sha256": sha,
+                "sklearn_version": sklearn.__version__,
+            },
+        })
+    return out
+
+
+def run(jobs, sha, workers=1):
+    """Records of every metric x input combination; combinations run in parallel, one per task.
+
+    A task aligns its own files, so each worker's cell order is its own: fine, since a metric only
+    ever sees arrays from one worker. ponytail: per-member parallelism, each worker holds the
+    reference (~150 MB at 1M cells); share it via shared memory if workers x RAM becomes the limit.
+    """
+    groups = {}
     for e, f, paths in jobs:
         ports = list(paths)
         fanned = [p for p in ports if len(paths[p]) > 1]
         for combo in itertools.product(*(paths[p] for p in ports)):
             chosen = dict(zip(ports, combo))
-            args = {p: data.get(e["ports"][p], chosen[p]) for p in ports}
-            yield {
-                "metric": e["id"],
-                "value": float(f(**args, **e.get("kwargs", {}))),
-                "subject": " | ".join(os.path.dirname(chosen[p]) for p in fanned) or name,
-                "rep": None,
-                "attrs": {
-                    "call": e["call"],
-                    "kwargs": e.get("kwargs", {}),
-                    "inputs": chosen,
-                    "higher_is_better": e["higher_is_better"],
-                    "range": e["range"],
-                    "catalog_sha256": sha,
-                    "sklearn_version": sklearn.__version__,
-                },
-            }
+            subject = " | ".join(os.path.dirname(chosen[p]) for p in (fanned or ports))
+            groups.setdefault(tuple(sorted(chosen.items())), []).append((e, f, chosen, subject))
+    tasks = [(sha, g) for g in groups.values()]
+    if workers <= 1 or len(tasks) <= 1:
+        results = list(map(_work, tasks))
+    else:
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(min(workers, len(tasks))) as pool:
+            results = list(pool.map(_work, tasks))  # in task order: output is deterministic
+    return [r for recs in results for r in recs]
 
 
 def pairs(s):
@@ -169,20 +203,35 @@ def parse_inputs(rest):
     return out
 
 
+def parse_output(values):
+    """The one --output id=PATH (api >= 0.8) -> its absolute Path."""
+    if len(values) != 1:
+        raise ValueError(f"expected exactly one --output id=PATH (the stage's metrics output), got {values}")
+    oid, sep, path = values[0].partition("=")
+    if not sep or not oid or not path:
+        raise ValueError(f"--output must be id=PATH, got {values[0]!r}")
+    if not os.path.isabs(path):
+        raise ValueError(f"--output {oid}: path must be absolute (api >= 0.8), got {path!r}")
+    return Path(path)
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser()
-    p.add_argument("--output_dir", required=True)
-    p.add_argument("--name", required=True)
+    p = argparse.ArgumentParser(allow_abbrev=False)  # else an input id like --m is taken as --metric
+    p.add_argument("--output", action="append", default=[], help="id=PATH, absolute (api >= 0.8)")
     p.add_argument("--metric", required=True, help="comma-separated catalog ids")
     p.add_argument("--bind", default="", help="port=input_id,...")
+    p.add_argument("--workers", type=int, default=len(os.sched_getaffinity(0)),
+                   help="processes over input combinations (default: the CPUs this process may use)")
+    for legacy in ("--output_dir", "--name"):  # passed by the runtime until api 0.10; unused
+        p.add_argument(legacy, help=argparse.SUPPRESS)
     args, rest = p.parse_known_args(argv)
 
+    out = parse_output(args.output)
     catalog, sha = load_catalog()
     jobs = plan(args.metric.split(","), pairs(args.bind), parse_inputs(rest), catalog)
-    out = Path(args.output_dir) / f"{args.name}_metrics.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w") as fh:
-        for rec in run(jobs, args.name, sha):
+        for rec in run(jobs, sha, args.workers):
             fh.write(json.dumps(rec) + "\n")
 
 
@@ -211,10 +260,13 @@ def selftest():
         write(d / f"m{m}" / "p.tsv", lab)
 
     catalog, _ = load_catalog()
-    main(["--output_dir", str(d), "--name", "x", "--metric", ",".join(catalog),
-          "--bind", "labels_true=truth,labels_pred=pred", "--truth", str(d / "t.tsv"),
-          "--pred", *(str(d / f"m{m}" / "p.tsv") for m in range(3))])
-    recs = [json.loads(l) for l in open(d / "x_metrics.jsonl")]
+    gather = ["--metric", ",".join(catalog), "--bind", "labels_true=truth,labels_pred=m",  # --m: a prefix of --metric
+              "--truth", str(d / "t.tsv"), "--m", *(str(d / f"m{m}" / "p.tsv") for m in range(3))]
+    # as the api 0.8 runtime calls it: legacy flags too, --output in its = form
+    main([f"--output=metrics_jsonl={d}/x.jsonl", "--output_dir", str(d), "--name", "x", "--workers", "3", *gather])
+    main(["--output", f"metrics_jsonl={d}/serial.jsonl", "--workers", "1", *gather])
+    assert (d / "x.jsonl").read_text() == (d / "serial.jsonl").read_text(), "parallel and serial runs differ"
+    recs = [json.loads(l) for l in open(d / "x.jsonl")]
     assert len(recs) == 3 * len(catalog), len(recs)
     for r in recs:
         e = catalog[r["metric"]]
@@ -225,9 +277,9 @@ def selftest():
         lo, hi = e["range"]
         assert (lo is None or r["value"] >= lo) and (hi is None or r["value"] <= hi), r
 
-    main(["--output_dir", str(d), "--name", "one", "--metric", "ari",  # no fan-in: subject is --name
+    main(["--output", f"m={d}/one.jsonl", "--metric", "ari",  # no fan-in: subject is every input's dir
           "--labels_true", str(d / "t.tsv"), "--labels_pred", str(d / "m0" / "p.tsv")])
-    assert json.loads(open(d / "one_metrics.jsonl").readline())["subject"] == "one"
+    assert json.loads(open(d / "one.jsonl").readline())["subject"] == f"{d} | {d}/m0"
 
     def fails(fn, msg):
         try:
@@ -242,6 +294,10 @@ def selftest():
     fails(lambda: resolve({"id": "evil", "call": "os.system", "ports": {}}), "outside")
     fails(lambda: resolve({"id": "bad", "call": "sklearn.metrics.adjusted_rand_score", "ports": {"x": "partition"}}), "no argument")
     fails(lambda: parse_inputs(["--a"]), "without a path")
+    fails(lambda: parse_output([]), "exactly one")
+    fails(lambda: parse_output(["a=/x", "b=/y"]), "exactly one")
+    fails(lambda: parse_output(["/x.jsonl"]), "id=PATH")
+    fails(lambda: parse_output(["a=rel.jsonl"]), "absolute")
     with open(d / "short.tsv", "w") as f:
         f.write("cell_id\tcluster\nc0\t1\n")
     inp = Inputs()
