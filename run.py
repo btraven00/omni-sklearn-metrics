@@ -110,10 +110,10 @@ def read_table(path):
         r = csv.reader(f, delimiter="\t")
         header = next(r)
         rows = list(r)
-    for line, row in enumerate(rows, start=2):
-        if len(row) != len(header):
-            what = "a blank line" if not row else f"{len(row)} field(s), the header has {len(header)}"
-            raise ValueError(f"{path}, line {line}: {what}")
+    if set(map(len, rows)) - {len(header)}:  # fast path; locate the first bad row only on failure
+        line, row = next((i, r) for i, r in enumerate(rows, start=2) if len(r) != len(header))
+        what = "a blank line" if not row else f"{len(row)} field(s), the header has {len(header)}"
+        raise ValueError(f"{path}, line {line}: {what}")
     if not rows:
         raise ValueError(f"{path}: no cells")
     return header[1:], [x[0] for x in rows], [x[1:] for x in rows]
