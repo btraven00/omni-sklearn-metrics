@@ -135,12 +135,55 @@ def test_fan_in_parallel_equals_serial():
         assert np.isclose(r["value"], sklearn_fn(e)(truth, preds[m], **e.get("kwargs", {})), rtol=1e-12)
 
 
-def test_single_pair_subject_is_every_input_dir():
+def test_subject_is_the_last_arguments_dir_relative_to_the_output_root():
     d = tmpdir()
     a = write_tsv(d / "a" / "x.tsv", ["c"], [RNG.integers(0, 3, 50)])
     b = write_tsv(d / "b" / "x.tsv", ["c"], [RNG.integers(0, 3, 50)])
-    rec = run_cli(d / "o.jsonl", "--metric", "ari", "--labels_true", a, "--labels_pred", b)[0]
-    assert rec["subject"] == f"{d}/a | {d}/b"
+    # outside an omnibenchmark tree: absolute; the same shape for one member as for many
+    assert run_cli(d / "o.jsonl", "--metric", "ari", "--labels_true", a, "--labels_pred", b)[0]["subject"] == f"{d}/b"
+    (d / ".metadata").mkdir()  # an omnibenchmark output root
+    rec = run_cli(d / "metrics" / "o.jsonl", "--metric", "ari", "--labels_true", a, "--labels_pred", b)[0]
+    assert rec["subject"] == "b", rec["subject"]
+
+
+def gather(d, members, n=60):
+    """Per member: an embedding and its clusters in one directory, as a pipeline run writes them."""
+    X, L = [], []
+    for m in range(members):
+        lab = RNG.integers(0, 3, n)
+        X.append(write_tsv(d / f"m{m}" / "x.tsv", ["a", "b"], list((RNG.normal(size=(3, 2))[lab] + RNG.normal(size=(n, 2))).T)))
+        L.append(write_tsv(d / f"m{m}" / "l.tsv", ["c"], [lab]))
+    return X, L
+
+
+def test_zip_pairs_each_members_own_files():
+    d = tmpdir()
+    X, L = gather(d, 3)
+    recs = run_cli(d / "o.jsonl", "--metric", "silhouette", "--X", *X, "--labels", *L)
+    assert [r["attrs"]["inputs"] for r in recs] == [{"X": x, "labels": l} for x, l in zip(X, L)]
+    assert [r["subject"] for r in recs] == [str(d / f"m{m}") for m in range(3)]
+    fails(lambda: run_cli(d / "o.jsonl", "--metric", "silhouette", "--X", *X, "--labels", *L[:2]),
+          "silhouette: --pairing zip needs equally many files", "'X': 3", "'labels': 2")
+
+
+def test_product_compares_members_with_each_other_never_with_themselves():
+    d = tmpdir()
+    _, L = gather(d, 3)
+    args = ("--metric", "ari", "--bind", "labels_true=clusters,labels_pred=clusters", "--clusters", *L)
+    fails(lambda: run_cli(d / "o.jsonl", *args), "same files", "--pairing product")
+    recs = run_cli(d / "o.jsonl", "--pairing", "product", *args)
+    pairs = [(r["attrs"]["inputs"]["labels_true"], r["attrs"]["inputs"]["labels_pred"]) for r in recs]
+    assert len(pairs) == 6 and all(a != b for a, b in pairs), pairs
+
+
+def test_finished_members_are_dropped_from_memory():
+    d = tmpdir()
+    _, L = gather(d, 3)
+    ref = write_tsv(d / "ref.tsv", ["c"], [RNG.integers(0, 3, 60)])
+    catalog = run.load_catalog()
+    jobs = run.plan(["ari"], {"labels_true": "ref", "labels_pred": "m"}, {"ref": [ref], "m": L}, catalog)
+    run.run(jobs, catalog, workers=1)
+    assert {path for _, path in run._DATA.cache} == {ref}, run._DATA.cache.keys()
 
 
 def test_cell_order_does_not_depend_on_file_order():
@@ -163,6 +206,10 @@ def test_cli_errors():
     fails(lambda: run.plan(["ari"], {}, {}, catalog), "argument labels_true", "not given")
     fails(lambda: run.resolve({"id": "evil", "call": "os.system", "args": {}}), "outside")
     fails(lambda: run.resolve({"id": "bad", "call": "sklearn.metrics.adjusted_rand_score", "args": {"x": "partition"}}), "no argument 'x'")
+    fails(lambda: run.parse_bind("labels_true=ref,labels_pred"), "'labels_pred' is not arg=input_id")
+    fails(lambda: run.plan(["ari", "ari"], {}, {}, catalog), "more than once")
+    fails(lambda: run.plan(["ari"], {"labels_ture": "x"}, {}, catalog), "--bind names ['labels_ture']", "labels_true")
+    fails(lambda: run.plan(["ari"], {"labels_true": "name"}, {"name": ["/x"]}, catalog), "module's --name flag", "rename")
 
 
 # --- 1. catalog consistency -------------------------------------------------------------------
@@ -174,10 +221,14 @@ def test_inconsistent_catalog_lists_every_problem():
     doc["metrics"].append(dict(doc["metrics"][0]))  # duplicate id
     doc["metrics"][1] = {**doc["metrics"][1], "args": {"labels_true": "nonsense", "labels_pred": "partition"},
                          "requires": {"y": ["finite"], "labels_pred": ["glossy"]}}
+    doc["metrics"][2] = {**doc["metrics"][2], "range": [1, 0], "higher_is_better": "yes"}
+    doc["metrics"][3] = {**doc["metrics"][3], "call": "sklearn.metrics.no_such_score"}
+    doc["metrics"][4] = {k: v for k, v in doc["metrics"][4].items() if k != "range"}
     path = tmpdir() / "catalog.yaml"
     path.write_text(yaml.safe_dump(doc))
     fails(lambda: run.load_catalog(path), "duplicate metric id 'ari'", "unknown rule 'shiny'", "columns must be",
-          "unknown data type 'nonsense'", "requires names 'y'", "unknown rule 'glossy'")
+          "unknown data type 'nonsense'", "requires names 'y'", "unknown rule 'glossy'", "range must be [min, max]",
+          "higher_is_better must be", "no_such_score does not exist", "missing ['range']")
 
 
 # --- 2. pre-flight: headers, before any data is read ------------------------------------------
@@ -201,6 +252,31 @@ def test_preflight_checks_headers_before_reading_data():
     fails(plan(metric=["r2"], y_true=ok, y_pred=no_id), "first column must be cell_id")
     fails(plan(metric=["r2"], y_true=ok, y_pred=d / "missing.tsv"), "no such file")
     fails(plan(metric=["log_loss"], y_true=ok, y_pred=two_classes), "(scores)", "needs >=3 column(s)")
+    dup_classes = write_tsv(d / "s_dup.tsv", ["a", "b", "a"], [np.full(20, 1 / 3)] * 3)
+    fails(plan(metric=["log_loss"], y_true=ok, y_pred=dup_classes), "duplicate column(s) ['a']")
+
+
+def test_rows_must_match_the_header():
+    d = tmpdir()
+    good = write_tsv(d / "good.tsv", ["v"], [RNG.random(5)])
+    header = "cell_id\tv\n" + "".join(f"c{i:04d}\t1\n" for i in range(4))
+    cases = {"wide": header + "c0004\t9\t0\n", "blank": header + "\nc0004\t1\n", "short": header + "c0004\n"}
+    for name, text in cases.items():
+        (d / f"{name}.tsv").write_text(text)
+    o = d / "o.jsonl"
+    fails(lambda: run_cli(o, "--metric", "r2", "--y_true", good, "--y_pred", str(d / "wide.tsv")), "wide.tsv, line 6", "3 field(s), the header has 2")
+    fails(lambda: run_cli(o, "--metric", "r2", "--y_true", good, "--y_pred", str(d / "blank.tsv")), "blank.tsv, line 6: a blank line")
+    fails(lambda: run_cli(o, "--metric", "r2", "--y_true", good, "--y_pred", str(d / "short.tsv")), "short.tsv, line 6", "1 field(s)")
+    (d / "bom.tsv").write_text("﻿" + header + "c0004\t2\n")  # a UTF-8 BOM, as Excel writes it
+    assert run_cli(o, "--metric", "r2", "--y_true", good, "--y_pred", str(d / "bom.tsv"))[0]["value"] is not None
+
+
+def test_duplicate_cell_ids_are_named_as_such():
+    d = tmpdir()
+    (d / "dup.tsv").write_text("cell_id\tc\nc0\t1\nc0\t2\nc1\t1\n")
+    other = write_tsv(d / "o.tsv", ["c"], [np.array([1, 2, 1])])
+    fails(lambda: run_cli(d / "o.jsonl", "--metric", "ari", "--labels_true", str(d / "dup.tsv"), "--labels_pred", other),
+          "dup.tsv: 1 duplicate cell id(s)")
 
 
 # --- 3. data type rules, once per file -----------------------------------------------------------
@@ -224,6 +300,8 @@ def test_type_rules_name_the_file_and_rule():
     fails(lambda: run_cli(o, "--metric", "r2", "--y_true", good, "--y_pred", str(text)), "text.tsv", "not a numeric table")
     fails(lambda: run_cli(o, "--metric", "log_loss", "--y_true", labels, "--y_pred", unnormalized), "probabilities", "rows not summing to 1")
     fails(lambda: run_cli(o, "--metric", "log_loss", "--y_true", labels, "--y_pred", out_of_unit), "probabilities", "outside [0, 1]")
+    rounded = write_tsv(d / "s_round.tsv", list(CLASSES[:3]), [np.full(n, 0.333333)] * 3)  # 6 decimals: sum 0.999999
+    fails(lambda: run_cli(o, "--metric", "log_loss", "--y_true", labels, "--y_pred", rounded), "rows not summing to 1", "renormalize")
 
 
 # --- 4. per-metric requirements ----------------------------------------------------------------
@@ -254,6 +332,13 @@ def test_scores_must_have_a_column_for_every_label():
     scores = write_tsv(d / "s.tsv", list(CLASSES[:3]), [np.full(n, 1 / 3)] * 3)  # 3 columns
     fails(lambda: run_cli(d / "o.jsonl", "--metric", "log_loss", "--y_true", labels, "--y_pred", scores),
           "argument y_true has labels ['mono']", "no column in the scores file")
+    # average_precision takes no labels=: it infers the classes from y_true, so a column without cells breaks it
+    labels3 = write_tsv(d / "l3.tsv", ["label"], [CLASSES[np.arange(n) % 3]])  # 3 classes
+    scores4 = write_tsv(d / "s4.tsv", list(CLASSES[:4]), [np.full(n, 1 / 4)] * 4)  # 4 columns
+    fails(lambda: run_cli(d / "o.jsonl", "--metric", "average_precision", "--y_true", labels3, "--y_score", scores4),
+          "columns ['mono'] with no cell in argument y_true")
+    # log_loss takes labels=, so the same files are fine there
+    assert run_cli(d / "o.jsonl", "--metric", "log_loss", "--y_true", labels3, "--y_pred", scores4)[0]["value"] > 0
 
 
 # --- 5. results ---------------------------------------------------------------------------------
