@@ -115,6 +115,7 @@ def page(doc, sha, version):
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#09090b; --card:#18181b; --line:#27272a; --line-hi:#3f3f46; --fg:#f4f4f5; --muted:#a1a1aa;
   --soft:#27272a; --accent:#60a5fa; --up:#4ade80; --down:#fbbf24; color-scheme: dark; }} }}
 * {{ box-sizing: border-box; }}
+[hidden] {{ display: none !important; }}  /* .card sets display:flex, which would beat the hidden attribute */
 body {{ margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 var(--sans); }}
 .wrap {{ max-width:1180px; margin:0 auto; padding:32px max(16px, env(safe-area-inset-right)) 64px max(16px, env(safe-area-inset-left)); }}
 .mono, code, pre {{ font-family:var(--mono); }}
