@@ -1,0 +1,64 @@
+# Metric catalog: every entry is a complete, runnable metric. run.py resolves it at runtime.
+#
+#   id                stable id; never reused for a different computation
+#   call              dotted path to the function; must start with an allowed prefix (run.py ALLOWED)
+#   ports             function argument -> port type (run.py CONVERTERS)
+#   kwargs            fixed keyword arguments; part of what the id means
+#   higher_is_better  true / false
+#   range             [min, max] the value can take; null for unbounded
+#
+# Changing an entry changes results under the same id: every record carries this file's
+# sha256 (attrs.catalog_sha256), so a dashboard can tell the two apart.
+version: 1
+metrics:
+  - id: ari
+    name: Adjusted Rand index
+    call: sklearn.metrics.adjusted_rand_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [-0.5, 1]
+  - id: rand
+    name: Rand index
+    call: sklearn.metrics.rand_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [0, 1]
+  - id: ami
+    name: Adjusted mutual information
+    call: sklearn.metrics.adjusted_mutual_info_score
+    ports: {labels_true: partition, labels_pred: partition}
+    kwargs: {average_method: arithmetic}
+    higher_is_better: true
+    range: [null, 1]
+  - id: nmi
+    name: Normalized mutual information
+    call: sklearn.metrics.normalized_mutual_info_score
+    ports: {labels_true: partition, labels_pred: partition}
+    kwargs: {average_method: arithmetic}
+    higher_is_better: true
+    range: [0, 1]
+  - id: homogeneity
+    name: Homogeneity
+    call: sklearn.metrics.homogeneity_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [0, 1]
+  - id: completeness
+    name: Completeness
+    call: sklearn.metrics.completeness_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [0, 1]
+  - id: v_measure
+    name: V-measure
+    call: sklearn.metrics.v_measure_score
+    ports: {labels_true: partition, labels_pred: partition}
+    kwargs: {beta: 1.0}
+    higher_is_better: true
+    range: [0, 1]
+  - id: fowlkes_mallows
+    name: Fowlkes-Mallows index
+    call: sklearn.metrics.fowlkes_mallows_score
+    ports: {labels_true: partition, labels_pred: partition}
+    higher_is_better: true
+    range: [0, 1]

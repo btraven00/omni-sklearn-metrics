@@ -1,0 +1,13 @@
+[workspace]
+name = "omni-sklearn-metrics"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+scikit-learn = "1.7.*"
+numpy = "*"
+pyyaml = "*"
+
+[tasks]
+selftest = "python run.py --selftest"

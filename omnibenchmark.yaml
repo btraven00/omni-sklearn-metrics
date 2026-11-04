@@ -1,0 +1,3 @@
+entrypoints:
+  default: run.py
+  run: run.py
