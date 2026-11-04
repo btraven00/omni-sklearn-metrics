@@ -1,0 +1,46 @@
+name: pages
+
+# Builds the catalog website from catalog.yaml and publishes it to GitHub Pages on every push to
+# main. Pull requests build it too, so a catalog change that breaks the page fails before merge.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "pyyaml==6.0.*"
+      - run: python site/build.py _site
+      - name: every metric has a card
+        run: test "$(grep -c '<article class="card"' _site/index.html)" -eq "$(python -c 'import yaml; print(len(yaml.safe_load(open("catalog.yaml"))["metrics"]))')"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

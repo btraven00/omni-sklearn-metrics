@@ -12,4 +12,5 @@ threadpoolctl = "3.*"  # run.py: one BLAS thread per worker
 
 [tasks]
 test = "python test_run.py"
+site = "python site/build.py _site"  # the catalog website (built and deployed by .github/workflows/pages.yml)
 export-env = "pixi workspace export conda-environment envs/sklearn.yml && sed -i 's/^name: default/name: sklearn/' envs/sklearn.yml"

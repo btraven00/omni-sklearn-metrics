@@ -84,5 +84,8 @@ Every error names the metric, the argument and the file. In the order they run:
 - `call` must start with `sklearn.metrics.` (`ALLOWED` in run.py): the catalog is code.
 - Tests: `pixi run test` (test_run.py: every entry against sklearn, every check, fan-in).
 - Env: `envs/sklearn.yml`, exported from pixi.toml by `pixi run export-env`.
+- Website: https://btraven00.github.io/omni-sklearn-metrics/, a card per metric with search and
+  filters, plus `catalog.json`. Built from `catalog.yaml` by `site/build.py` (`pixi run site`) and
+  deployed by `.github/workflows/pages.yml` on every push to `main`.
 
 The resolver, readers and checks are meant to move into obkit once a second module uses them.

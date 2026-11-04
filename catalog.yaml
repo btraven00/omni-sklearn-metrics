@@ -22,20 +22,28 @@ version: 1
 # Data types: every one is a TSV whose first column is cell_id. `columns` (after cell_id) is
 # checked on every file's header before any data is read; `rules` on the values when it loads.
 types:
-  partition:   # a label per cell; only which cells share a label matters (int-coded)
+  partition:
+    description: A label per cell. Only which cells share a label matters (the labels are int-coded).
     columns: 1
     rules: []
-  labels:      # a label per cell; the label values matter (kept as strings)
+  labels:
+    description: A label per cell. The label values matter (kept as strings).
     columns: 1
     rules: []
-  values:      # a number per cell
+  values:
+    description: A number per cell.
     columns: 1
     rules: [finite]
-  embedding:   # a vector per cell (e.g. PC1..PCn)
+  embedding:
+    description: A vector per cell, e.g. PC1..PCn.
     columns: ">=1"
     rules: [finite]
-  scores:      # class probabilities per cell, header = class names; >= 3 classes. Columns are
-    columns: ">=3"   # sorted by class name and the names passed as labels= when the function takes it
+  scores:
+    description: >-
+      Class probabilities per cell, one column per class (header = class names), at least 3
+      classes. Columns are sorted by class name, and the names are passed as labels= when the
+      function takes it.
+    columns: ">=3"
     rules: [finite, probabilities]
 
 metrics:
