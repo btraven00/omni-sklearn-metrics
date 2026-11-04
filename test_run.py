@@ -102,7 +102,7 @@ def test_catalog_covers_sklearn_metrics():
     have = {fn for fn in skm.__all__ if inspect.isfunction(getattr(skm, fn))}
     entries = {m["call"].rpartition(".")[2] for m in doc["metrics"]}
     excluded = set(doc["excluded"])
-    assert have == entries | excluded, f"not placed: {sorted(have - entries - excluded)}; stale: {sorted(entries | excluded - have)}"
+    assert have == entries | excluded, f"not placed: {sorted(have - entries - excluded)}; stale: {sorted((entries | excluded) - have)}"
     assert not entries & excluded, f"both an entry and excluded: {sorted(entries & excluded)}"
 
 
@@ -251,11 +251,13 @@ def test_inconsistent_catalog_lists_every_problem():
     doc["metrics"][2] = {**doc["metrics"][2], "range": [1, 0], "higher_is_better": "yes"}
     doc["metrics"][3] = {**doc["metrics"][3], "call": "sklearn.metrics.no_such_score"}
     doc["metrics"][4] = {k: v for k, v in doc["metrics"][4].items() if k != "range"}
+    doc["metrics"][5] = {**doc["metrics"][5], "macro)": None}  # what `name: X (a, macro)` unquoted in {...} produces
     path = tmpdir() / "catalog.yaml"
     path.write_text(yaml.safe_dump(doc))
     fails(lambda: run.load_catalog(path), "duplicate metric id 'ari'", "unknown rule 'shiny'", "columns must be",
           "unknown data type 'nonsense'", "requires names 'y'", "unknown rule 'glossy'", "range must be [min, max]",
-          "higher_is_better must be", "no_such_score does not exist", "missing ['range']")
+          "higher_is_better must be", "no_such_score does not exist", "missing ['range']",
+          "unknown key(s) ['macro)']")
 
 
 # --- 2. pre-flight: headers, before any data is read ------------------------------------------
