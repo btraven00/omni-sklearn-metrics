@@ -59,7 +59,7 @@ def card(e, version):
     hay = " ".join([e["id"], e["name"], fn, family(e), *e["args"], *e["args"].values()]).lower()
     return f"""<article class="card" data-family="{escape(family(e))}" data-types="{escape(' '.join(sorted(set(e['args'].values()))))}" data-hay="{escape(hay)}">
   <div class="top"><h3>{escape(e["name"])}</h3><span class="badge mono" title="catalog id">{escape(e["id"])}</span></div>
-  <a class="call mono" href="{docs}">sklearn.metrics.{escape(fn)}</a>
+  <a class="call mono" href="{docs}" target="_blank" rel="noopener">sklearn.metrics.{escape(fn)}</a>
   <dl>{"".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in rows)}</dl>
   <div class="foot"><span class="pill">{escape(family(e))}</span>
     <span class="foot-r"><button type="button" class="use" data-use="{escape(e["id"])}">Use in a plan</button>

@@ -49,7 +49,7 @@ import yaml
 CATALOG = Path(__file__).resolve().parent / "catalog.yaml"
 ALLOWED = ("sklearn.metrics.",)  # a catalog entry is code: only these modules may be called
 RANGE_TOLERANCE = 1e-9  # float slack on a declared range bound (r2 can come out as 1 + 1e-16)
-PROBABILITY_RTOL = float(np.sqrt(np.finfo(float).eps))  # sklearn 1.7's rows-sum-to-1 tolerance
+PROBABILITY_RTOL = float(np.sqrt(np.finfo(float).eps))  # sklearn's rows-sum-to-1 tolerance (1.7 to 1.9)
 ENTRY_KEYS = {"id", "name", "call", "args", "kwargs", "requires", "higher_is_better", "range"}
 DEFAULT_MAX_WORKERS = 8  # each worker holds its own copy of shared inputs (the reference)
 FLAGS = {"output", "metric", "bind", "pairing", "workers", "output_dir", "name"}  # never input ids

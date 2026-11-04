@@ -102,7 +102,7 @@ def test_catalog_covers_sklearn_metrics():
     have = {fn for fn in skm.__all__ if inspect.isfunction(getattr(skm, fn))}
     entries = {m["call"].rpartition(".")[2] for m in doc["metrics"]}
     excluded = set(doc["excluded"])
-    assert have == entries | excluded, f"not placed: {sorted(have - entries - excluded)}; stale: {sorted(entries | excluded - have)}"
+    assert have == entries | excluded, f"not placed: {sorted(have - entries - excluded)}; stale: {sorted((entries | excluded) - have)}"
     assert not entries & excluded, f"both an entry and excluded: {sorted(entries & excluded)}"
 
 

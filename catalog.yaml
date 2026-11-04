@@ -207,6 +207,7 @@ metrics:
   - {id: log_loss, name: "Log loss (cross-entropy)", call: sklearn.metrics.log_loss, args: {y_true: labels, y_pred: scores}, higher_is_better: false, range: [0, null]}
   - {id: d2_log_loss, name: "D2 log loss (fraction of log loss explained)", call: sklearn.metrics.d2_log_loss_score, args: {y_true: labels, y_pred: scores}, higher_is_better: true, range: [null, 1]}
   - {id: brier_score, name: "Brier score (multiclass, unscaled)", call: sklearn.metrics.brier_score_loss, args: {y_true: labels, y_proba: scores}, higher_is_better: false, range: [0, 2]}
+  - {id: d2_brier_score, name: "D2 Brier score (fraction of Brier score explained)", call: sklearn.metrics.d2_brier_score, args: {y_true: labels, y_proba: scores}, higher_is_better: true, range: [null, 1]}
   - {id: top_k_accuracy, name: "Top-2 accuracy", call: sklearn.metrics.top_k_accuracy_score, args: {y_true: labels, y_score: scores}, kwargs: {k: 2}, higher_is_better: true, range: [0, 1]}
 
   # --- values vs values (regression, e.g. pseudotime or imputed expression) ------------------
@@ -245,6 +246,8 @@ excluded:
   label_ranking_average_precision_score: multilabel ranking; needs a multilabel indicator port
   label_ranking_loss: multilabel ranking; needs a multilabel indicator port
   det_curve: a curve, not a number
+  confusion_matrix_at_thresholds: one confusion matrix per threshold, not a number
+  metric_at_thresholds: applies another metric at every threshold; a curve, not a number
   precision_recall_curve: a curve, not a number
   roc_curve: a curve, not a number
   euclidean_distances: pairwise distances, not a metric

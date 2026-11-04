@@ -32,7 +32,7 @@ until that lands upstream.
 
 ## Catalog
 
-54 entries over every scalar metric in `sklearn.metrics` (clustering agreement, cluster
+55 entries over every scalar metric in `sklearn.metrics` (clustering agreement, cluster
 separation, classification, class probabilities, regression); every other function is under
 `excluded:` with the reason. A test fails if the two lists stop covering `sklearn.metrics`
 exactly, e.g. after a sklearn upgrade.
