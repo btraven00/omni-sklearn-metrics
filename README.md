@@ -64,10 +64,13 @@ Every error names the metric, the argument and the file. In the order they run:
 ## Running
 
 - Fan-in: an argument bound to several paths (a `gather`) runs each metric once per path.
-  When several arguments get several files, `--pairing zip` (default) pairs the n-th files,
-  i.e. one gather member's own embedding and clusters (assumes omnibenchmark lists the
-  members of a group in the same order in every gather entry); `--pairing product` pairs every
-  file with every other but never with itself (replicate-to-replicate agreement).
+  When several arguments get several files, `--pairing lineage` (default) pairs the files of
+  one pipeline, whatever order the gather lists them in: omnibenchmark nests a node's directory
+  under its deepest input's (design 007 §3.1.1), so an embedding pairs with the clusters whose
+  directory is the same or below it. One embedding may serve several clusterings; a prediction
+  file matching no or several embeddings, or an embedding matching nothing, is an error.
+  `--pairing product` pairs every file with every other but never with itself
+  (replicate-to-replicate agreement).
 - Combinations run in parallel: `--workers`, default the CPU budget (affinity, capped by a
   cgroup quota) and at most 8, one BLAS thread each. Each file is read, joined on `cell_id` and
   checked once per worker; a member's files are dropped once it is done, files shared by

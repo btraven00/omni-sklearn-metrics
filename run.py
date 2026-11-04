@@ -10,9 +10,10 @@ Contract (omnibenchmark api >= 0.8, named outputs, design 009 §3.2):
   --metric ids                    catalog entries to run (each at most once)
   --bind arg=input_id,...         which plan input feeds each function argument
                                   (unbound: the input named like the argument)
-  --pairing zip|product           when several arguments get several files: zip pairs the n-th
-                                  files (members of one gather group; default), product pairs
-                                  every file with every other (e.g. replicate-to-replicate)
+  --pairing lineage|product       when several arguments get several files: lineage pairs the
+                                  files of one pipeline, by their directories (default; see
+                                  combinations), product every file with every other
+                                  (replicate-to-replicate)
   --workers N                     processes (default: the CPU budget, at most DEFAULT_MAX_WORKERS)
   --output_dir, --name            still passed by the runtime until api 0.10; accepted, ignored
 
@@ -254,28 +255,55 @@ def check_header(path, dtype, types):
         raise ValueError(f"{path} ({dtype}): duplicate column(s) {dup}")
 
 
+def on_one_lineage(paths):
+    """True if the files' directories lie on one ancestor-descendant chain.
+
+    Omnibenchmark nests a node's directory under its deepest input's (design 007 §3.1.1, both
+    layouts), so files on one chain come from one pipeline: an embedding and the clusters
+    computed from it.
+    """
+    dirs = sorted((Path(p).parent for p in paths), key=lambda d: len(d.parts))
+    return all(child.is_relative_to(parent) for parent, child in zip(dirs, dirs[1:]))
+
+
 def combinations(entry, paths, pairing):
     """[{arg: path}]: the input combinations one entry runs on.
 
-    One file per argument: one combination. Several arguments with several files: zip pairs the
-    n-th files (they must be equally many), product every file with every other, except a file
-    with itself.
+    Only arguments with several files ("fanned", a gather) need pairing; a single file (the
+    reference) joins every combination.
+      lineage  files on one lineage (on_one_lineage), whatever order the gather lists them in.
+               One embedding may serve several clusterings computed from it, but every file
+               of the last fanned argument (the prediction) must match exactly one combination,
+               and every other fanned file at least one.
+      product  every file with every other, never a file with itself (replicate agreement).
     """
-    fanned = {arg: len(ps) for arg, ps in paths.items() if len(ps) > 1}
-    if pairing == "zip":
-        if len(set(fanned.values())) > 1:
-            raise ValueError(f"{entry['id']}: --pairing zip needs equally many files per argument, got {fanned}")
-        lists = [tuple(paths[arg]) for arg in fanned]
-        if len(set(lists)) < len(lists):
-            raise ValueError(f"{entry['id']}: arguments {sorted(fanned)} get the same files, so zip would pair "
-                             f"each file with itself; use --pairing product to compare them with each other")
-        n = max(fanned.values(), default=1)
-        return [{arg: ps[i] if len(ps) > 1 else ps[0] for arg, ps in paths.items()} for i in range(n)]
+    fanned = [arg for arg, ps in paths.items() if len(ps) > 1]
     combos = [dict(zip(paths, c)) for c in itertools.product(*paths.values())]
-    return [c for c in combos if len({c[arg] for arg in fanned}) == len(fanned)]
+    if pairing == "product":
+        return [c for c in combos if len({c[arg] for arg in fanned}) == len(fanned)]
+    if len(fanned) < 2:
+        return combos
+
+    lists = [tuple(paths[arg]) for arg in fanned]
+    if len(set(lists)) < len(lists):
+        raise ValueError(f"{entry['id']}: arguments {fanned} get the same files, so lineage would pair each "
+                         f"file with itself; use --pairing product to compare them with each other")
+    # ponytail: filters the full product, n^k for k fanned arguments (k is 2 in practice)
+    combos = [c for c in combos if on_one_lineage([c[arg] for arg in fanned])]
+    anchor = fanned[-1]
+    for path in paths[anchor]:
+        matches = [c for c in combos if c[anchor] == path]
+        if len(matches) != 1:
+            found = [{a: c[a] for a in fanned if a != anchor} for c in matches]
+            raise ValueError(f"{entry['id']}: {anchor} file {path} is on the lineage of {len(matches)} "
+                             f"combination(s) of the other arguments, needs exactly 1: {found}")
+    for arg in fanned[:-1]:
+        if unused := sorted(set(paths[arg]) - {c[arg] for c in combos}):
+            raise ValueError(f"{entry['id']}: {arg} file(s) {unused} share a lineage with no {anchor} file")
+    return combos
 
 
-def plan(metric_ids, bind, inputs, catalog, pairing="zip"):
+def plan(metric_ids, bind, inputs, catalog, pairing="lineage"):
     """[(entry, fn, [{arg: path}])] for the requested ids, after the pre-flight."""
     if dup := sorted({m for m in metric_ids if metric_ids.count(m) > 1}):
         raise ValueError(f"--metric lists {dup} more than once")
@@ -513,8 +541,8 @@ def main(argv=None):
     p.add_argument("--output", action="append", default=[], help="id=PATH, absolute (api >= 0.8)")
     p.add_argument("--metric", required=True, help="comma-separated catalog ids")
     p.add_argument("--bind", default="", help="arg=input_id,... (function argument = plan input id)")
-    p.add_argument("--pairing", choices=["zip", "product"], default="zip",
-                   help="several files on several arguments: pair the n-th (zip) or all with all (product)")
+    p.add_argument("--pairing", choices=["lineage", "product"], default="lineage",
+                   help="several files on several arguments: pair one pipeline's files (lineage) or all with all (product)")
     p.add_argument("--workers", type=int, default=min(cpu_budget(), DEFAULT_MAX_WORKERS),
                    help=f"processes over input combinations (default: the CPU budget, at most {DEFAULT_MAX_WORKERS})")
     for legacy in ("--output_dir", "--name"):  # passed by the runtime until api 0.10; unused
